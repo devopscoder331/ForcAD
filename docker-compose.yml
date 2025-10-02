@@ -110,7 +110,7 @@ services:
     env_file:
       - ./docker_config/redis_environment.env
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
   rabbitmq:
     hostname: rabbitmq
@@ -119,8 +119,8 @@ services:
     env_file:
       - ./docker_config/rabbitmq_environment.env
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
 
   postgres:
     image: postgres:13.4-alpine
@@ -131,5 +131,5 @@ services:
     restart: on-failure
     command: "postgres --max-connections=200"
     ports:
-      - "5432:5432"
-      - "6432:5432"
+      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:6432:5432"
