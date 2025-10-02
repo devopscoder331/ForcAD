@@ -1,0 +1,1075 @@
+openapi: 3.0.3
+info:
+  title: ForcAD - CTF Attack/Defense Jury System API
+  description: |
+    ForcAD - автоматизированная система жюри для CTF соревнований в формате Attack/Defense.
+    
+    Система предоставляет три основных API:
+    - **Client API** - публичный API для участников (просмотр таблицы результатов, команд, задач)
+    - **Admin API** - административный API для управления игрой (требует аутентификации)
+    - **HTTP Receiver API** - API для отправки флагов командами
+  version: 2.0.0
+  contact:
+    name: ForcAD Team
+    url: https://github.com/pomo-mondreganto/ForcAD
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Локальный сервер разработки
+  - url: https://forcad.ctf.example.com
+    description: Продакшен сервер (пример)
+
+tags:
+  - name: Client API
+    description: Публичные эндпоинты для участников соревнования
+  - name: Admin API
+    description: Административные эндпоинты (требуют аутентификации)
+  - name: Flags
+    description: API для отправки флагов
+  - name: Health
+    description: Проверка состояния сервисов
+
+paths:
+  /api/client/teams/:
+    get:
+      tags:
+        - Client API
+      summary: Получить список всех команд
+      description: Возвращает список всех зарегистрированных команд (без токенов)
+      operationId: getTeams
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamPublic'
+
+  /api/client/tasks/:
+    get:
+      tags:
+        - Client API
+      summary: Получить список задач
+      description: Возвращает список всех задач соревнования
+      operationId: getTasks
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskPublic'
+
+  /api/client/config/:
+    get:
+      tags:
+        - Client API
+      summary: Получить конфигурацию игры
+      description: Возвращает текущую конфигурацию игры (время раунда, режим, время начала и т.д.)
+      operationId: getGameConfig
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameConfig'
+
+  /api/client/attack_data/:
+    get:
+      tags:
+        - Client API
+      summary: Получить данные об атаках
+      description: Возвращает агрегированные данные об атаках для визуализации
+      operationId: getAttackData
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                description: JSON объект с данными об атаках
+
+  /api/client/teams/{team_id}/:
+    get:
+      tags:
+        - Client API
+      summary: Получить историю команды
+      description: Возвращает историю проверок для конкретной команды
+      operationId: getTeamHistory
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID команды
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: История проверок задач команды
+
+  /api/client/ctftime/:
+    get:
+      tags:
+        - Client API
+      summary: Получить таблицу результатов для CTFTime
+      description: Возвращает таблицу результатов в формате CTFTime
+      operationId: getCtftimeScoreboard
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  standings:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          description: Таблица недоступна
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: not available
+
+  /api/client/health/:
+    get:
+      tags:
+        - Client API
+        - Health
+      summary: Проверка здоровья Client API
+      description: Простая проверка доступности сервиса
+      operationId: clientHealthCheck
+      responses:
+        '200':
+          description: Сервис работает
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /api/admin/login/:
+    post:
+      tags:
+        - Admin API
+      summary: Аутентификация администратора
+      description: Выполняет вход в систему и устанавливает сессионную куку
+      operationId: adminLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  description: Имя пользователя администратора
+                password:
+                  type: string
+                  format: password
+                  description: Пароль администратора
+      responses:
+        '200':
+          description: Успешная аутентификация
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: session=abc123; HttpOnly; SameSite=Lax
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '403':
+          description: Неверные учетные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/status/:
+    get:
+      tags:
+        - Admin API
+      summary: Проверка статуса сессии
+      description: Проверяет валидность текущей сессии администратора
+      operationId: adminStatus
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Сессия валидна
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '403':
+          description: Сессия невалидна или отсутствует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/teams/:
+    get:
+      tags:
+        - Admin API
+      summary: Получить список всех команд (с токенами)
+      description: Возвращает полный список команд с токенами доступа
+      operationId: adminListTeams
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Team'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Admin API
+      summary: Создать новую команду
+      description: Создает новую команду. Токен генерируется автоматически
+      operationId: adminCreateTeam
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - ip
+              properties:
+                name:
+                  type: string
+                  description: Название команды
+                  example: HackerTeam
+                ip:
+                  type: string
+                  format: ipv4
+                  description: IP-адрес команды
+                  example: 10.60.1.1
+                highlighted:
+                  type: boolean
+                  description: Выделить команду в таблице
+                  default: false
+                active:
+                  type: boolean
+                  description: Активна ли команда
+                  default: true
+      responses:
+        '201':
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          description: Неверные данные команды
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/teams/{team_id}/:
+    get:
+      tags:
+        - Admin API
+      summary: Получить детали команды
+      description: Возвращает полную информацию о конкретной команде
+      operationId: adminGetTeam
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID команды
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '404':
+          description: Команда не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Admin API
+      summary: Обновить команду
+      description: Обновляет информацию о команде
+      operationId: adminUpdateTeam
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID команды
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Название команды
+                ip:
+                  type: string
+                  format: ipv4
+                  description: IP-адрес команды
+                token:
+                  type: string
+                  description: Токен команды
+                highlighted:
+                  type: boolean
+                  description: Выделить команду в таблице
+                active:
+                  type: boolean
+                  description: Активна ли команда
+      responses:
+        '200':
+          description: Команда обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          description: Неверные данные команды
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Admin API
+      summary: Удалить команду
+      description: Удаляет команду из системы
+      operationId: adminDeleteTeam
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID команды
+      responses:
+        '200':
+          description: Команда удалена
+          content:
+            application/json:
+              schema:
+                type: string
+                example: ok
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/tasks/:
+    get:
+      tags:
+        - Admin API
+      summary: Получить список всех задач
+      description: Возвращает полный список задач с деталями чекеров
+      operationId: adminListTasks
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Admin API
+      summary: Создать новую задачу
+      description: Создает новую задачу (сервис) для соревнования
+      operationId: adminCreateTask
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - checker
+                - gets
+                - puts
+                - places
+                - checker_timeout
+                - checker_type
+                - env_path
+                - default_score
+                - get_period
+              properties:
+                name:
+                  type: string
+                  description: Название задачи
+                  example: WebService
+                checker:
+                  type: string
+                  description: Имя чекера
+                  example: web_checker.py
+                gets:
+                  type: integer
+                  description: Количество GET проверок
+                  example: 1
+                puts:
+                  type: integer
+                  description: Количество PUT проверок (установка флагов)
+                  example: 1
+                places:
+                  type: integer
+                  description: Количество мест для флагов
+                  example: 1
+                checker_timeout:
+                  type: integer
+                  description: Таймаут чекера в секундах
+                  example: 30
+                checker_type:
+                  type: string
+                  description: Тип чекера (тэги через подчеркивание)
+                  example: pfr
+                env_path:
+                  type: string
+                  description: Путь к файлу окружения чекера
+                  example: /checkers/web/env.sh
+                default_score:
+                  type: number
+                  format: float
+                  description: Базовое количество очков
+                  example: 2500.0
+                get_period:
+                  type: integer
+                  description: Период GET проверок в раундах
+                  example: 1
+                active:
+                  type: boolean
+                  description: Активна ли задача
+                  default: true
+      responses:
+        '201':
+          description: Задача создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: Неверные данные задачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/tasks/{task_id}/:
+    get:
+      tags:
+        - Admin API
+      summary: Получить детали задачи
+      description: Возвращает полную информацию о конкретной задаче
+      operationId: adminGetTask
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID задачи
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Задача не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Admin API
+      summary: Обновить задачу
+      description: Обновляет информацию о задаче
+      operationId: adminUpdateTask
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID задачи
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Название задачи
+                checker:
+                  type: string
+                  description: Имя чекера
+                gets:
+                  type: integer
+                  description: Количество GET проверок
+                puts:
+                  type: integer
+                  description: Количество PUT проверок
+                places:
+                  type: integer
+                  description: Количество мест для флагов
+                checker_timeout:
+                  type: integer
+                  description: Таймаут чекера в секундах
+                checker_type:
+                  type: string
+                  description: Тип чекера
+                env_path:
+                  type: string
+                  description: Путь к файлу окружения
+                default_score:
+                  type: number
+                  format: float
+                  description: Базовое количество очков
+                get_period:
+                  type: integer
+                  description: Период GET проверок в раундах
+                active:
+                  type: boolean
+                  description: Активна ли задача
+      responses:
+        '200':
+          description: Задача обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: Неверные данные задачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Admin API
+      summary: Удалить задачу
+      description: Удаляет задачу из системы
+      operationId: adminDeleteTask
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID задачи
+      responses:
+        '200':
+          description: Задача удалена
+          content:
+            application/json:
+              schema:
+                type: string
+                example: ok
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/teamtasks/:
+    get:
+      tags:
+        - Admin API
+      summary: Получить историю проверок
+      description: Возвращает историю проверок задачи для конкретной команды
+      operationId: adminGetTeamTaskHistory
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: team_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: ID команды
+        - name: task_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: ID задачи
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: История проверок (статусы, очки, вердикты)
+        '400':
+          description: Не указаны team_id или task_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /flags/:
+    put:
+      tags:
+        - Flags
+      summary: Отправить флаги
+      description: |
+        Отправляет флаги для проверки. Команды используют этот эндпоинт для отправки 
+        украденных флагов. За каждый валидный флаг начисляются очки.
+      operationId: submitFlags
+      parameters:
+        - name: X-Team-Token
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Токен команды для аутентификации
+          example: a1b2c3d4e5f6g7h8
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 100
+              items:
+                type: string
+                description: Флаг в формате системы
+                example: "31337_abcdef1234567890abcdef1234567890="
+              example:
+                - "31337_abcdef1234567890abcdef1234567890="
+                - "31337_1234567890abcdefabcdef1234567890="
+      responses:
+        '200':
+          description: Флаги обработаны
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FlagResponse'
+        '400':
+          description: Ошибка в запросе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidToken:
+                  summary: Неверный токен
+                  value:
+                    error: Invalid team token.
+                gameNotStarted:
+                  summary: Игра не начата
+                  value:
+                    error: Game not started.
+                invalidFormat:
+                  summary: Неверный формат
+                  value:
+                    error: Invalid request format. Must provide a list with no more than 100 flags.
+                invalidJson:
+                  summary: Неверный JSON
+                  value:
+                    error: Invalid json sent
+
+  /flags/health/:
+    get:
+      tags:
+        - Flags
+        - Health
+      summary: Проверка здоровья Flag Receiver API
+      description: Простая проверка доступности сервиса
+      operationId: flagsHealthCheck
+      responses:
+        '200':
+          description: Сервис работает
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Сессионная кука, устанавливаемая при логине через /api/admin/login/
+
+  schemas:
+    TeamPublic:
+      type: object
+      description: Публичная информация о команде (без токена)
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор команды
+          example: 1
+        name:
+          type: string
+          description: Название команды
+          example: HackerTeam
+        ip:
+          type: string
+          format: ipv4
+          description: IP-адрес команды
+          example: 10.60.1.1
+        highlighted:
+          type: boolean
+          description: Выделена ли команда в таблице
+          example: false
+        active:
+          type: boolean
+          description: Активна ли команда
+          example: true
+      required:
+        - id
+        - name
+        - ip
+        - highlighted
+        - active
+
+    Team:
+      type: object
+      description: Полная информация о команде (включая токен)
+      allOf:
+        - $ref: '#/components/schemas/TeamPublic'
+        - type: object
+          properties:
+            token:
+              type: string
+              description: Токен команды для отправки флагов
+              example: a1b2c3d4e5f6g7h8
+          required:
+            - token
+
+    TaskPublic:
+      type: object
+      description: Публичная информация о задаче
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор задачи
+          example: 1
+        name:
+          type: string
+          description: Название задачи
+          example: WebService
+      required:
+        - id
+        - name
+
+    Task:
+      type: object
+      description: Полная информация о задаче
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор задачи
+          example: 1
+        name:
+          type: string
+          description: Название задачи
+          example: WebService
+        checker:
+          type: string
+          description: Имя чекера
+          example: web_checker.py
+        gets:
+          type: integer
+          description: Количество GET проверок
+          example: 1
+        puts:
+          type: integer
+          description: Количество PUT проверок (установка флагов)
+          example: 1
+        places:
+          type: integer
+          description: Количество мест для флагов
+          example: 1
+        checker_timeout:
+          type: integer
+          description: Таймаут чекера в секундах
+          example: 30
+        checker_type:
+          type: string
+          description: |
+            Тип чекера. Тэги:
+            - `pfr` - чекер возвращает публичные данные флага
+            - `nfr` - чекер не возвращает flag_id
+          example: pfr
+        env_path:
+          type: string
+          description: Путь к файлу окружения чекера
+          example: /checkers/web/env.sh
+        default_score:
+          type: number
+          format: float
+          description: Базовое количество очков за задачу
+          example: 2500.0
+        get_period:
+          type: integer
+          description: Период GET проверок в раундах
+          example: 1
+        active:
+          type: boolean
+          description: Активна ли задача
+          example: true
+      required:
+        - id
+        - name
+        - checker
+        - gets
+        - puts
+        - places
+        - checker_timeout
+        - checker_type
+        - env_path
+        - default_score
+        - get_period
+        - active
+
+    GameConfig:
+      type: object
+      description: Конфигурация игры
+      properties:
+        id:
+          type: integer
+          description: ID конфигурации
+          example: 1
+        flag_lifetime:
+          type: integer
+          description: Время жизни флага в раундах
+          example: 5
+        game_hardness:
+          type: number
+          format: float
+          description: Сложность игры (влияет на систему подсчета очков)
+          example: 3.0
+        inflation:
+          type: boolean
+          description: Включена ли инфляция очков
+          example: true
+        volga_attacks_mode:
+          type: boolean
+          description: Режим атак Volga (один флаг за раунд)
+          example: false
+        round_time:
+          type: integer
+          description: Длительность раунда в секундах
+          example: 60
+        mode:
+          type: string
+          description: Режим игры
+          enum:
+            - classic
+            - blitz
+          example: classic
+        timezone:
+          type: string
+          description: Часовой пояс
+          example: Europe/Moscow
+        start_time:
+          type: string
+          format: date-time
+          description: Время начала игры
+          example: "2024-12-20 10:00:00"
+        real_round:
+          type: integer
+          nullable: true
+          description: Текущий раунд (-1 если игра не начата)
+          example: 42
+        game_running:
+          type: boolean
+          nullable: true
+          description: Запущена ли игра
+          example: true
+      required:
+        - flag_lifetime
+        - game_hardness
+        - inflation
+        - volga_attacks_mode
+        - round_time
+        - mode
+        - timezone
+        - start_time
+
+    FlagResponse:
+      type: object
+      description: Ответ на отправленный флаг
+      properties:
+        msg:
+          type: string
+          description: Сообщение о статусе флага
+          example: "[31337_abcdef1234567890=] Accepted. +12.5 points"
+        flag:
+          type: string
+          description: Отправленный флаг
+          example: "31337_abcdef1234567890abcdef1234567890="
+      required:
+        - msg
+        - flag
+
+    HealthStatus:
+      type: object
+      description: Статус здоровья сервиса
+      properties:
+        status:
+          type: string
+          example: ok
+      required:
+        - status
+
+    Error:
+      type: object
+      description: Сообщение об ошибке
+      properties:
+        error:
+          type: string
+          description: Описание ошибки
+          example: Invalid credentials
+      required:
+        - error
+
