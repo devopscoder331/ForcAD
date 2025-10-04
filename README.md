@@ -250,3 +250,4 @@ checker.
 ## Wiki
 
 More extensive reading can be found in the [wiki pages](https://github.com/pomo-mondreganto/ForcAD/wiki).
+
